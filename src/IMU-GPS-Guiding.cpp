@@ -10,123 +10,252 @@
 #include "sensor_msgs/NavSatFix.h"
 #include "geometry_msgs/Twist.h"
 #include <math.h>
-
+#include "sensor_msgs/LaserScan.h"
+#include <boost/thread.hpp>
 using namespace std;
-/*****初始位置姿态设置和目标点设置*****/
-double x=1;
-double y=1;//起点坐标
-double theta=3.1415926/2;//初始航向角
-double x_goal=10;
-double y_goal=10;
-double T=1/50;//采样频率，imu发布话题的频率为50HZ
-double L=4.0;//两个推进器间的距离
-//pid控制器参数设置
-    //航向控制参数设置
-double k=10;
-double ki=0.1;
-double kd=0.1;
-double error_sum=0;
-double pre_error=0;
-//距离控制参数设置
- double k2=10;
-//是否初始化
-bool isinitized=false;
-double w;
-double v_x;
-double v_y;
+
+
+
+class IMU_GPS_Guiding
+{
+private:
+    /* data */
+    ros::NodeHandle n;
+    ros::Publisher Twist_info_pub;
+    ros::Subscriber gps_info_sub;
+    ros::Subscriber imu_info_sub;
+    ros::Subscriber lidar_info_sub;
+    double gps_x;
+    double gps_y;
+    /*****初始位置姿态设置和目标点设置*****/
+    double x;
+    double y;//起点坐标
+    double theta;//初始航向角
+    double x_goal;
+    double y_goal;
+    double t=0.02;//采样频率，imu发布话题的频率为50HZ
+    double L;//两个推进器间的距离
+    //pid控制器参数设置
+        //航向控制参数设置
+    double k;
+    double ki;
+    double kd;
+    double error_sum;
+    double pre_error;
+    //距离控制参数设置
+    double k2;
+    //是否初始化
+    bool isinitized=false;
+    double w;
+    double v_x;
+    double v_y;
+
+public:
+
+    IMU_GPS_Guiding(/* args */);
+    void imuInfoCallback(const sensor_msgs::Imu::ConstPtr& msg);
+    void gpsInfoCallback(const sensor_msgs::NavSatFix::ConstPtr& msg);
+    void scanInfoCallback(const sensor_msgs::LaserScan::ConstPtr& msg);
+    ~IMU_GPS_Guiding();
+    void initized_and_parameter_setting();
+};
+
+IMU_GPS_Guiding::IMU_GPS_Guiding(/* args */)
+{
+    Twist_info_pub=n.advertise<geometry_msgs::Twist>("/cmd_vel",1000);
+    gps_info_sub=n.subscribe("/fix",10,&IMU_GPS_Guiding::gpsInfoCallback,this);
+    imu_info_sub=n.subscribe("/imu",10,&IMU_GPS_Guiding::imuInfoCallback,this);
+    lidar_info_sub=n.subscribe("/scan",10,&IMU_GPS_Guiding::scanInfoCallback,this);
+
+}
+
+IMU_GPS_Guiding::~IMU_GPS_Guiding()
+{
+}
+
+void IMU_GPS_Guiding::initized_and_parameter_setting()
+{
+
+ //isinitized=false;
+}
+
+
+
+
+
 // 接收到订阅的消息后，会进入消息回调函数
-void imuInfoCallback(const sensor_msgs::Imu::ConstPtr& msg)
+void IMU_GPS_Guiding::imuInfoCallback(const sensor_msgs::Imu::ConstPtr& msg)
 {
     // 将接收到的消息打印出来
     //ROS_INFO("Subcribe Imu Info: x:%d  y:%d z:%d", 
 	//msg->linear_acceleration.x, msg->linear_acceleration.y,x);
-    cout<<"imu:"<<msg->linear_acceleration.x<<endl;
+   // cout<<"imu:"<<msg->linear_acceleration.x<<endl;
    // cout<<"test:"<<x<<endl;
 if(!isinitized)
 {
-
+  /*****初始位置姿态设置和目标点设置*****/
+    this->x=0;;
+    this->y=0;//起点坐标
+    this->theta=3.1415926/2;//初始航向角
+    this->x_goal=10;
+    this->y_goal=10;
+    ///this->T=0.02;//采样频率，imu发布话题的频率为50HZ
+    this->L=4.0;//两个推进器间的距离
+    //pid控制器参数设置
+        //航向控制参数设置
+    this->k=10;
+    this->ki=0.1;
+    this->kd=0.1;
+    this->pre_error=0;
+    //距离控制参数设置
+    this->k2=10;
+  cout<<"初始化中"<<endl;
 //航向角度闭环pid控制
     double theta_error;
-    theta_error=theta-atan((y_goal-y)/(x_goal-x));
-    error_sum=error_sum+theta_error;
-    w=-k*theta_error+ki*error_sum+kd*(theta_error-pre_error);
-    pre_error=theta_error;
+    theta_error=this->theta-atan((this->y_goal-this->y)/(this->x_goal-this->x));
+    this->error_sum=this->error_sum+theta_error;
+    this->w=-this->k*theta_error+this->ki*this->error_sum+this->kd*(theta_error-this->pre_error);
+    this->pre_error=theta_error;
 
    //速度pid控制
    
-double dist=sqrt((x-x_goal)*(x-x_goal)+(y-y_goal)*(y-y_goal));
+double dist=sqrt((this->x-this->x_goal)*(this->x-this->x_goal)+(this->y-this->y_goal)*(this->y-this->y_goal));
 double v=k2*dist;
-v_x=v*cos(theta);
-v_y=v*sin(theta);
-isinitized=true;
+this->v_x=v*cos(this->theta);
+this->v_y=v*sin(this->theta);
+this->isinitized=true;
 }
 else
 {
     double angular_z=(msg->angular_velocity.z);
-    theta=theta+angular_z*T;//航向角推算
+    this->theta=this->theta+angular_z*this->t;//航向角推算
     /*****位置推算*****/
     double  x_acc=(msg->linear_acceleration.x);
     double  y_acc=(msg->linear_acceleration.y);
-    v_x=v_x+x_acc*T;
-    v_y=v_y+y_acc*T;
-    x=x+v_x*T;//推算出的x坐标
-    y=y+v_y*T;//推算出的y坐标
-
+    this->v_x=this->v_x+x_acc*this->t;
+    this->v_y=this->v_y+y_acc*this->t;
+   this-> x=this->x+this->v_x*this->t;//推算出的x坐标
+    this->y=this->y+this->v_y*this->t;//推算出的y坐标
+    cout<<"ax:"<<x_acc<<endl;
+    cout<<"T:"<<this->t<<endl;
+    cout<<endl;
+    cout<<"初始化已经结束"<<endl;
+    cout<<"gpx_x:"<<this->gps_x<<"gps_y"<<this->gps_y<<endl;
 //航向角度闭环pid控制
     double theta_error;
-    theta_error=theta-atan((y_goal-y)/(x_goal-x));
-    error_sum=error_sum+theta_error;
-    w=-k*theta_error+ki*error_sum+kd*(theta_error-pre_error);
-    pre_error=theta_error;
+    theta_error=this->theta-atan((this->y_goal-this->y)/(this->x_goal-this->x));
+    this->error_sum=this->error_sum+theta_error;
+    this->w=-this->k*theta_error;//+this->ki*this->error_sum+this->kd*(theta_error-this->pre_error);
+    this->pre_error=theta_error;
 
    //速度pid控制
    
-double dist=sqrt((x-x_goal)*(x-x_goal)+(y-y_goal)*(y-y_goal));
+double dist=sqrt((this->x-this->x_goal)*(this->x-this->x_goal)+(this->y-this->y_goal)*(this->y-this->y_goal));
 double v=k2*dist;
-v_x=v*cos(theta);
-v_y=v*sin(theta);
-isinitized=true;
+this->v_x=v*cos(this->theta);
+this->v_y=v*sin(this->theta);
 }
+
+ 
+  // ros::init(argc, argv, "Twist_publisher");
+  /*
+ ros::NodeHandle n;
+ ros::Publisher Twist_info_pub = n.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
+*/
+ geometry_msgs::Twist vel_pub;
+
+     vel_pub.angular.z=w;
+     vel_pub.linear.x=v_x;
+     vel_pub.linear.y=v_y;
+     Twist_info_pub.publish(vel_pub);
+    // Twist_info_pub.publish(vel_pub);
+    cout<<"x:"<<this->x<<endl;
+    cout<<"y:"<<this->y<<endl;
+    cout<<"theta:"<<this->theta<<endl;
    
 }
 
 
 // 接收到订阅的消息后，会进入消息回调函数
-void gpsInfoCallback(const sensor_msgs::NavSatFix::ConstPtr& msg)
+ void IMU_GPS_Guiding::gpsInfoCallback(const sensor_msgs::NavSatFix::ConstPtr& msg)
 {
     // 将接收到的消息打印出来
   //  ROS_INFO("Subcribe gps Info: x:%d  y:%d test:%d", 
 	//		 msg->latitude, msg->longitude,x);
-    cout<<"gps:"<<msg->latitude<<endl;
-    cout<<"test:"<<x<<endl;
+    //cout<<"gps:"<<msg->latitude<<endl;
+    //cout<<"test:"<<x<<endl;
+    gps_x=msg->latitude;
+    gps_y=msg->longitude;
 }
+
+
+// 接收到订阅的消息后，会进入消息回调函数
+void IMU_GPS_Guiding::scanInfoCallback(const sensor_msgs::LaserScan::ConstPtr& msg)
+{
+    // 将接收到的消息打印出来
+  //  ROS_INFO("Subcribe gps Info: x:%d  y:%d test:%d", 
+	//		 msg->latitude, msg->longitude,x);
+//for(int i=0;i<msg->ranges.size();i++)
+  //  cout<<"lidar:"<<msg->ranges[i]<<endl;
+   // cout<<"test:"<<x<<endl;
+}
+
+
+
+
+
+
+
+
+
 int main(int argc, char **argv)
 {
     // 初始化ROS节点
-    ros::init(argc, argv, "imu_sudcriber");
-    ros::init(argc, argv, "gps_sudcriber");
-    ros::init(argc, argv, "Twist_publisher");
+    
+    ros::init(argc, argv, "Guide_sudcriber");
+   
+     
     // 创建节点句柄
     ros::NodeHandle n;
     
-   // 创建一个Publisher，发布名为/person_info的topic，消息类型为learning_topic::Person，队列长度10
-    ros::Publisher Twist_info_pub = n.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
-    
-    ros::Subscriber gps_info_sub = n.subscribe("/fix", 10, gpsInfoCallback);
-
-    // 创建一个Subscriber，订阅名为/imu的topic，注册回调函数personInfoCallback
-    ros::Subscriber imu_info_sub = n.subscribe("/imu", 10, imuInfoCallback);
-    
-    /******讲控制指令转换成速度信息发布出去**********/
+   // 创建一个Publisher，发布名为/Twist_info_pub的topic，消息类型为geometry_msgs::Twist，队列长度10
    
+    
+   // ros::Subscriber gps_info_sub = n.subscribe("/fix", 10, gpsInfoCallback);
+
+    // 创建一个Subscriber，订阅名为/imu的topic，注册回调函数imuInfoCallback
+   // ros::init(argc, argv, "imu_sudcriber");
+   // ros::Subscriber imu_info_sub = n.subscribe("/imu", 10, imuInfoCallback);
+    
+     // 创建一个Subscriber，订阅名为/imu的topic，注册回调函数personInfoCallback
+     //ros::init(argc, argv, "Lidar_sudcriber");
+   // ros::Subscriber lidar_info_sub = n.subscribe("/scan", 10, scanInfoCallback);
+   // ros::Publisher Twist_info_pub = n.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
+       // 设置循环的频率
+    //ros::Rate loop_rate(1);
+     //while (ros::ok())
+     //{
+
+      /******讲控制指令转换成速度信息发布出去**********/
+   /*
      geometry_msgs::Twist vel_pub;
      vel_pub.angular.z=w;
      vel_pub.linear.x=v_x;
      vel_pub.linear.y=v_y;
      Twist_info_pub.publish(vel_pub);
-
+    cout<<"x:"<<x<<endl;
+    cout<<"y:"<<y<<endl;
+    cout<<"theta:"<<theta<<endl;
+    */
     // 循环等待回调函数
-    ros::spin();
+   // ros::spin();
+
+     ///}
+   IMU_GPS_Guiding test;
+    //ros::spin();
+    ros::MultiThreadedSpinner spinner(2);//三个线程订阅
+    spinner.spin();
+
 
     return 0;
 }
