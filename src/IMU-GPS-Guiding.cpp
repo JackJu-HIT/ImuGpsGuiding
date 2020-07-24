@@ -12,6 +12,7 @@
 #include "sensor_msgs/LaserScan.h"
 #include <boost/thread.hpp>
 //#include<subscriber.h>
+#include "sensor_msgs/Image.h"
 using namespace std;
 
 class IMU_GPS_Guiding
@@ -23,6 +24,7 @@ private:
     ros::Subscriber gps_info_sub;
     ros::Subscriber imu_info_sub;
     ros::Subscriber lidar_info_sub;
+    ros::Subscriber camera_info_sub;
     double gps_x;
     double gps_y;
     /*****初始位置姿态设置和目标点设置*****/
@@ -53,15 +55,18 @@ public:
     void imuInfoCallback(const sensor_msgs::Imu::ConstPtr& msg);
     void gpsInfoCallback(const sensor_msgs::NavSatFix::ConstPtr& msg);
     void scanInfoCallback(const sensor_msgs::LaserScan::ConstPtr& msg);
+    void cameraInfoCallback(const sensor_msgs::Image::ConstPtr& msg);
+
     ~IMU_GPS_Guiding();
     void initized_and_parameter_setting();
 };
 IMU_GPS_Guiding::IMU_GPS_Guiding(/* args */)
 {
-    Twist_info_pub=n.advertise<geometry_msgs::Twist>("/cmd_vel",1000);
-    gps_info_sub=n.subscribe("/fix",10,&IMU_GPS_Guiding::gpsInfoCallback,this);
-    imu_info_sub=n.subscribe("/imu",10,&IMU_GPS_Guiding::imuInfoCallback,this);
-    lidar_info_sub=n.subscribe("/scan",10,&IMU_GPS_Guiding::scanInfoCallback,this);
+    //Twist_info_pub=n.advertise<geometry_msgs::Twist>("/cmd_vel",1000);
+   // gps_info_sub=n.subscribe("/fix",10,&IMU_GPS_Guiding::gpsInfoCallback,this);
+    //imu_info_sub=n.subscribe("/imu",10,&IMU_GPS_Guiding::imuInfoCallback,this);
+    //lidar_info_sub=n.subscribe("/scan",10,&IMU_GPS_Guiding::scanInfoCallback,this);
+    camera_info_sub=n.subscribe("/kinect2/hd/image_color",10,&IMU_GPS_Guiding::cameraInfoCallback,this);
 }
 
 IMU_GPS_Guiding::~IMU_GPS_Guiding()
@@ -193,11 +198,29 @@ void IMU_GPS_Guiding::scanInfoCallback(const sensor_msgs::LaserScan::ConstPtr& m
   //  ROS_INFO("Subcribe gps Info: x:%d  y:%d test:%d", 
 	//		 msg->latitude, msg->longitude,x);
 //for(int i=0;i<msg->ranges.size();i++)
-  //  cout<<"lidar:"<<msg->ranges[i]<<endl;
+//通过测试s1雷达ranges[]长度为720
+  cout<<"lidar_length:"<<msg->ranges.size()<<endl;
+  cout<<"我认为的正前方=ranges[0]:"<<msg->ranges[0]<<endl;
+  cout<<"我认为的正前方=ranges[720]:"<<msg->ranges[720]<<endl;
+  cout<<"我认为的左侧方=ranges[180]："<<msg->ranges[180]<<endl;
+  cout<<"我认为的左侧方=ranges[270]："<<msg->ranges[180]<<endl;
+  cout<<"我认为的右侧方=ranges[540]:"<<msg->ranges[540]<<endl;
+  cout<<"我认为的后方方=ranges[360]:"<<msg->ranges[360]<<endl;
+
    // cout<<"test:"<<x<<endl;
 }
 
+// 接收到订阅的消息后，会进入消息回调函数
+void IMU_GPS_Guiding::cameraInfoCallback(const sensor_msgs::Image::ConstPtr &msg)
+{
+cout<<"图像高度"<<msg->height<<endl;
+cout<<"图像宽度："<<msg->width<<endl;
 
+cout<<"data矩阵大小"<<msg->data.size()<<endl;
+cout<<"内容"<<msg->data[1]<<endl;
+
+
+}
 
 
 
@@ -250,7 +273,7 @@ int main(int argc, char **argv)
      ///}
    IMU_GPS_Guiding test;
     //ros::spin();
-    ros::MultiThreadedSpinner spinner(2);//三个线程订阅
+    ros::MultiThreadedSpinner spinner(4);//三个线程订阅
     spinner.spin();
 
 
